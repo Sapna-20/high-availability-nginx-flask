@@ -1,54 +1,92 @@
-# 💓 High Availability Setup using Heartbeat
+# ⚖️ Load Balancing using Nginx and Flask
 
-This project demonstrates **High Availability (HA)** using the `heartbeat` service on Linux servers. It ensures one Load Balancer takes over when another fails.
+This project demonstrates **Load Balancing** using:
+
+- `Nginx` as the load balancer
+- `Gunicorn` to serve a simple Flask application
+- Two backend servers on different ports
 
 ## 🧱 Architecture Overview
 
-- Two load balancer VMs
-- Shared virtual IP: `192.168.0.10`
-- Backend servers behind the load balancer
+```
+Client -> Nginx Load Balancer (192.168.0.10)
+        -> Backend1 (192.168.0.11:8001)
+        -> Backend2 (192.168.0.12:8002)
+```
 
-## ⚙️ Configuration Steps
+---
 
-### 1. Install Heartbeat
+## 🛠️ Backend Server Setup
+
+### 1. Install Flask and Gunicorn
 ```bash
-sudo apt install heartbeat
+pip install flask gunicorn
 ```
 
-### 2. Configure /etc/ha.d/ha.cf
-```
-logfacility local0
-keepalive 2
-deadtime 10
-warntime 5
-initdead 20
-udpport 694
-bcast eth0
-node lb1
-node lb2
+### 2. Create app.py
+
+```python
+from flask import Flask
+
+app = Flask(__name__)
+
+@app.route('/')
+def hello():
+    return "Hello_World!"
+
+if __name__ == '__main__':
+    app.run(debug=False, host='0.0.0.0')
 ```
 
-### 3. Configure /etc/ha.d/haresources
-```
-lb1 192.168.0.10 nginx
-```
+### 3. Run on Different Ports
 
-### 4. Configure /etc/ha.d/authkeys
-```
-auth 1
-1 crc
-```
+- Backend 1:
 ```bash
-chmod 600 /etc/ha.d/authkeys
+gunicorn --bind 0.0.0.0:8001 app:app
 ```
 
-### 5. Start Heartbeat
+- Backend 2:
 ```bash
-sudo systemctl start heartbeat
+gunicorn --bind 0.0.0.0:8002 app:app
 ```
 
-## 🧪 Failure Test
+---
 
-1. Turn off nginx on `lb1`
-2. Heartbeat will automatically assign virtual IP to `lb2`
-3. User will still be able to access the backend — HA working ✅
+## ⚙️ Nginx Load Balancer Setup
+
+### 1. Install Nginx
+```bash
+sudo apt install nginx
+```
+
+### 2. Edit Configuration
+
+```nginx
+upstream backend_servers {
+    server 192.168.0.11:8001;
+    server 192.168.0.12:8002;
+}
+
+server {
+    listen 80;
+
+    location / {
+        proxy_pass http://backend_servers;
+    }
+}
+```
+
+### 3. Restart Nginx
+```bash
+sudo systemctl restart nginx
+```
+
+---
+
+## 🧪 Testing
+
+Open a browser or run:
+```bash
+curl http://192.168.0.10
+```
+Results will alternate between the two backend servers.
